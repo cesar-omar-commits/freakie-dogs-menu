@@ -18,6 +18,7 @@ export default function FreakieDogsApp() {
   const [contactName, setContactName] = useState("");
   const [contactPhone, setContactPhone] = useState("");
   const [address, setAddress] = useState("");
+  const [coords, setCoords] = useState(null); // { lat, lng }
   const [houseNum, setHouseNum] = useState("");
   const [city, setCity] = useState("San Salvador");
   const [reference, setReference] = useState("");
@@ -95,8 +96,12 @@ export default function FreakieDogsApp() {
       msg += `🏠 *N° casa/oficina:* ${houseNum}\n`;
       msg += `🏙️ *Ciudad:* ${city}\n`;
       msg += `📍 *Punto de referencia:* ${reference}\n`;
-      const mapQuery = encodeURIComponent(`${address}, ${houseNum}, ${city}, El Salvador`);
-      msg += `🗺️ *Ver en mapa:* https://www.google.com/maps/search/?api=1&query=${mapQuery}\n`;
+      if (coords) {
+        msg += `🗺️ *Ver en mapa:* https://www.google.com/maps?q=${coords.lat},${coords.lng}\n`;
+      } else {
+        const mapQuery = encodeURIComponent(`${address}, ${houseNum}, ${city}, El Salvador`);
+        msg += `🗺️ *Ver en mapa:* https://www.google.com/maps/search/?api=1&query=${mapQuery}\n`;
+      }
     }
     msg += `\n💳 *Método de pago:* ${paymentMethod === "cash" ? "Efectivo" : paymentMethod === "transfer" ? "Transferencia bancaria" : "Tarjeta de crédito/débito"}\n`;
     msg += `\n👤 *Contacto:* ${contactName} - ${contactPhone}\n`;
@@ -126,6 +131,7 @@ export default function FreakieDogsApp() {
     setContactName("");
     setContactPhone("");
     setAddress("");
+    setCoords(null);
     setHouseNum("");
     setCity("San Salvador");
     setReference("");
@@ -173,6 +179,8 @@ export default function FreakieDogsApp() {
             setContactPhone={setContactPhone}
             address={address}
             setAddress={setAddress}
+            coords={coords}
+            setCoords={setCoords}
             houseNum={houseNum}
             setHouseNum={setHouseNum}
             city={city}
@@ -549,10 +557,117 @@ function CartScreen({ cart, orderNote, setOrderNote, onBack, onEdit, onRemove, o
 function CheckoutScreen({
   cart, cartTotal, deliveryType, setDeliveryType, paymentMethod, setPaymentMethod,
   contactName, setContactName, contactPhone, setContactPhone,
-  address, setAddress, houseNum, setHouseNum, city, setCity,
+  address, setAddress, coords, setCoords, houseNum, setHouseNum, city, setCity,
   reference, setReference, promoCode, setPromoCode, orderNote,
   errors, onBack, onSubmit
 }) {
+  const [showMap, setShowMap] = useState(false);
+  const [geoLoading, setGeoLoading] = useState(false);
+  const [geoError, setGeoError] = useState("");
+  const [mapCenter, setMapCenter] = useState(coords || { lat: 13.6783, lng: -89.2808 }); // Default: Santa Tecla
+  const mapRef = useRef(null);
+  const markerRef = useRef(null);
+  const leafletLoaded = useRef(false);
+
+  // Reverse geocode coords to address text
+  const reverseGeocode = useCallback(async (lat, lng) => {
+    try {
+      const res = await fetch(`https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`);
+      const data = await res.json();
+      if (data.display_name) {
+        setAddress(data.display_name.split(",").slice(0, 3).join(",").trim());
+        if (data.address) {
+          if (data.address.city || data.address.town || data.address.village) {
+            setCity(data.address.city || data.address.town || data.address.village);
+          }
+        }
+      }
+    } catch (e) {
+      // Silently fail - user can still type address manually
+    }
+  }, [setAddress, setCity]);
+
+  // Get current GPS location
+  const useCurrentLocation = () => {
+    if (!navigator.geolocation) {
+      setGeoError("Tu navegador no soporta geolocalización");
+      return;
+    }
+    setGeoLoading(true);
+    setGeoError("");
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const newCoords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
+        setCoords(newCoords);
+        setMapCenter(newCoords);
+        reverseGeocode(newCoords.lat, newCoords.lng);
+        setGeoLoading(false);
+      },
+      (err) => {
+        setGeoError("No se pudo obtener tu ubicación. Verificá los permisos.");
+        setGeoLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  };
+
+  // Load Leaflet CSS + JS dynamically
+  useEffect(() => {
+    if (!showMap || leafletLoaded.current) return;
+    const cssLink = document.createElement("link");
+    cssLink.rel = "stylesheet";
+    cssLink.href = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.css";
+    document.head.appendChild(cssLink);
+
+    const script = document.createElement("script");
+    script.src = "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js";
+    script.onload = () => { leafletLoaded.current = true; initMap(); };
+    document.head.appendChild(script);
+    return;
+  }, [showMap]);
+
+  // Initialize or update map
+  const initMap = useCallback(() => {
+    if (!window.L || !document.getElementById("location-map")) return;
+    if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+
+    const map = window.L.map("location-map").setView([mapCenter.lat, mapCenter.lng], 16);
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: '© OpenStreetMap'
+    }).addTo(map);
+
+    const marker = window.L.marker([mapCenter.lat, mapCenter.lng], { draggable: true }).addTo(map);
+    markerRef.current = marker;
+    mapRef.current = map;
+
+    marker.on("dragend", () => {
+      const pos = marker.getLatLng();
+      setCoords({ lat: pos.lat, lng: pos.lng });
+      setMapCenter({ lat: pos.lat, lng: pos.lng });
+      reverseGeocode(pos.lat, pos.lng);
+    });
+
+    map.on("click", (e) => {
+      marker.setLatLng(e.latlng);
+      setCoords({ lat: e.latlng.lat, lng: e.latlng.lng });
+      setMapCenter({ lat: e.latlng.lat, lng: e.latlng.lng });
+      reverseGeocode(e.latlng.lat, e.latlng.lng);
+    });
+
+    setTimeout(() => map.invalidateSize(), 200);
+  }, [mapCenter, reverseGeocode, setCoords]);
+
+  // Re-init map when showMap changes and leaflet is already loaded
+  useEffect(() => {
+    if (showMap && leafletLoaded.current) {
+      setTimeout(initMap, 100);
+    }
+  }, [showMap, initMap]);
+
+  // Save map location
+  const saveMapLocation = () => {
+    setShowMap(false);
+  };
   return (
     <>
       <div className="modal-header" style={{ position: "sticky", top: 0, background: "var(--bg)", zIndex: 10, borderBottom: "1px solid var(--border)" }}>
@@ -628,8 +743,78 @@ function CheckoutScreen({
         {deliveryType === "delivery" && (
           <div className="checkout-section">
             <div className="checkout-section-title">📌 Dirección de envío</div>
+            
             <label className="input-label input-required">Dirección</label>
-            <input className={`input-field ${errors.address ? "field-error" : ""}`} value={address} onChange={e => setAddress(e.target.value)} placeholder="Ej. 29 Calle Oriente 504" />
+            {address && coords && (
+              <div style={{ padding: "10px 14px", background: "var(--surface)", borderRadius: "var(--radius-sm)", fontSize: 14, color: "var(--text1)", marginBottom: 8, border: "1px solid var(--border)" }}>
+                {address}
+              </div>
+            )}
+            {!coords && (
+              <input className={`input-field ${errors.address ? "field-error" : ""}`} value={address} onChange={e => setAddress(e.target.value)} placeholder="Ej. 29 Calle Oriente 504" />
+            )}
+
+            <button
+              type="button"
+              onClick={useCurrentLocation}
+              disabled={geoLoading}
+              style={{
+                width: "100%", padding: "14px", marginTop: 8, marginBottom: 6,
+                background: "var(--text1, #1a1a1a)", color: "var(--bg, #fff)",
+                border: "none", borderRadius: "var(--radius-sm, 8px)",
+                fontSize: 14, fontWeight: 600, cursor: "pointer",
+                opacity: geoLoading ? 0.6 : 1,
+              }}
+            >
+              {geoLoading ? "Obteniendo ubicación..." : "📍 Usar mi ubicación actual"}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setShowMap(!showMap)}
+              style={{
+                width: "100%", padding: "14px", marginBottom: 8,
+                background: "transparent", color: "var(--text1, #1a1a1a)",
+                border: "2px solid var(--text1, #1a1a1a)", borderRadius: "var(--radius-sm, 8px)",
+                fontSize: 14, fontWeight: 600, cursor: "pointer",
+              }}
+            >
+              🗺️ Elegir ubicación usando el mapa
+            </button>
+
+            {geoError && (
+              <div style={{ color: "#e53e3e", fontSize: 13, marginBottom: 8 }}>{geoError}</div>
+            )}
+
+            {coords && (
+              <div style={{ fontSize: 12, color: "var(--text3, #888)", marginBottom: 8 }}>
+                ✅ Ubicación guardada ({coords.lat.toFixed(5)}, {coords.lng.toFixed(5)})
+              </div>
+            )}
+
+            {showMap && (
+              <div style={{ marginBottom: 12 }}>
+                <div id="location-map" style={{ width: "100%", height: 280, borderRadius: "var(--radius-sm, 8px)", border: "1px solid var(--border, #ddd)", marginBottom: 8 }} />
+                <div style={{ fontSize: 12, color: "var(--text3, #888)", textAlign: "center", marginBottom: 8 }}>
+                  Tocá el mapa o arrastrá el pin para elegir tu ubicación
+                </div>
+                <button
+                  type="button"
+                  onClick={saveMapLocation}
+                  disabled={!coords}
+                  style={{
+                    width: "100%", padding: "12px",
+                    background: coords ? "var(--text1, #1a1a1a)" : "#ccc",
+                    color: "var(--bg, #fff)",
+                    border: "none", borderRadius: "var(--radius-sm, 8px)",
+                    fontSize: 14, fontWeight: 600, cursor: coords ? "pointer" : "default",
+                  }}
+                >
+                  Guardar ubicación
+                </button>
+              </div>
+            )}
+
             <label className="input-label input-required">N° casa/apartamento/oficina</label>
             <input className={`input-field ${errors.house ? "field-error" : ""}`} value={houseNum} onChange={e => setHouseNum(e.target.value)} placeholder="Ej. Casa 23, #520" />
             <label className="input-label">Ciudad</label>
