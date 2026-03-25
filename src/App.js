@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { STORE, CATEGORIES, PRODUCTS } from "./data";
 import { Icons } from "./Icons";
 import { fmt, calcItemTotal, generateOrderId } from "./utils";
@@ -6,7 +6,7 @@ import "./styles.css";
 
 export default function FreakieDogsApp() {
   const [screen, setScreen] = useState("menu"); // menu | cart | checkout | success
-  const [activeCategory, setActiveCategory] = useState("combos");
+  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0]?.id || "combos");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cart, setCart] = useState([]);
   const [orderNote, setOrderNote] = useState("");
@@ -86,15 +86,15 @@ export default function FreakieDogsApp() {
       }
       msg += `  ${fmt(calcItemTotal(product, item.selections, item.qty))}\n\n`;
     });
-    msg += `━━━━━━━━━━━━━━━━\n`;
+    msg += `════════════════\n`;
     msg += `💰 *Total: ${fmt(cartTotal)}*\n`;
-    msg += `🔖 *Nº Referencia:* ${orderId}\n\n`;
+    msg += `🔖 *N° Referencia:* ${orderId}\n\n`;
     msg += `🚀 *Tipo de entrega:* ${deliveryType === "delivery" ? "Envío a domicilio" : "Recogida en el comercio"}\n`;
     if (deliveryType === "delivery") {
-      msg += `📍 *Dirección:* ${address}\n`;
-      msg += `🏠 *Nº casa/oficina:* ${houseNum}\n`;
+      msg += `📌 *Dirección:* ${address}\n`;
+      msg += `🏠 *N° casa/oficina:* ${houseNum}\n`;
       msg += `🏙️ *Ciudad:* ${city}\n`;
-      msg += `📌 *Punto de referencia:* ${reference}\n`;
+      msg += `📍 *Punto de referencia:* ${reference}\n`;
     }
     msg += `\n💳 *Método de pago:* ${paymentMethod === "cash" ? "Efectivo" : paymentMethod === "transfer" ? "Transferencia bancaria" : "Tarjeta de crédito/débito"}\n`;
     msg += `\n👤 *Contacto:* ${contactName} - ${contactPhone}\n`;
@@ -205,7 +205,7 @@ export default function FreakieDogsApp() {
         {screen === "menu" && cartCount > 0 && (
           <button className="cart-fab" onClick={() => setScreen("cart")}>
             {Icons.cart}
-            <span>Mi Cesta</span>
+            <span>Mi pedido</span>
             <span className="badge">{cartCount}</span>
             <span style={{ fontFamily: "var(--mono)", fontWeight: 800 }}>{fmt(cartTotal)}</span>
           </button>
@@ -215,11 +215,63 @@ export default function FreakieDogsApp() {
   );
 }
 
-// ═══════════════════════════════════════════
-// MENU SCREEN
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
+// MENU SCREEN — Scroll continuo con todas las categorías
+// ═══════════════════════════════════════════════
 function MenuScreen({ activeCategory, setActiveCategory, onSelectProduct }) {
-  const filteredProducts = PRODUCTS.filter(p => p.category === activeCategory);
+  const sectionRefs = useRef({});
+  const tabsRef = useRef(null);
+  const isScrollingByClick = useRef(false);
+
+  // Scroll to category when tab is clicked
+  const scrollToCategory = useCallback((catId) => {
+    setActiveCategory(catId);
+    const el = sectionRefs.current[catId];
+    if (el) {
+      isScrollingByClick.current = true;
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+      setTimeout(() => { isScrollingByClick.current = false; }, 800);
+    }
+  }, [setActiveCategory]);
+
+  // Update active tab on scroll using IntersectionObserver
+  useEffect(() => {
+    const observers = [];
+    const handleIntersect = (entries) => {
+      if (isScrollingByClick.current) return;
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const catId = entry.target.getAttribute("data-category");
+          if (catId) setActiveCategory(catId);
+          break;
+        }
+      }
+    };
+
+    CATEGORIES.forEach(cat => {
+      const el = sectionRefs.current[cat.id];
+      if (el) {
+        const observer = new IntersectionObserver(handleIntersect, {
+          rootMargin: "-100px 0px -60% 0px",
+          threshold: 0,
+        });
+        observer.observe(el);
+        observers.push(observer);
+      }
+    });
+
+    return () => observers.forEach(o => o.disconnect());
+  }, [setActiveCategory]);
+
+  // Scroll active tab into view in the tabs bar
+  useEffect(() => {
+    if (tabsRef.current) {
+      const activeBtn = tabsRef.current.querySelector(".cat-tab.active");
+      if (activeBtn) {
+        activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+      }
+    }
+  }, [activeCategory]);
 
   return (
     <>
@@ -241,12 +293,12 @@ function MenuScreen({ activeCategory, setActiveCategory, onSelectProduct }) {
         </div>
       </div>
 
-      <div className="categories-bar">
+      <div className="categories-bar" ref={tabsRef}>
         {CATEGORIES.map(cat => (
           <button
             key={cat.id}
             className={`cat-tab ${activeCategory === cat.id ? "active" : ""}`}
-            onClick={() => setActiveCategory(cat.id)}
+            onClick={() => scrollToCategory(cat.id)}
           >
             {cat.name}
           </button>
@@ -254,42 +306,47 @@ function MenuScreen({ activeCategory, setActiveCategory, onSelectProduct }) {
       </div>
 
       <div className="products-section">
-        <div className="section-title">
-          {CATEGORIES.find(c => c.id === activeCategory)?.name}
-        </div>
-        {filteredProducts.map(product => (
-          <div key={product.id} className="product-card" onClick={() => onSelectProduct(product)}>
-            <div className="product-emoji">{product.image}</div>
-            <div className="product-details">
-              <div className="product-name">{product.name}</div>
-              <div className="product-desc">{product.description}</div>
-              <div className="product-price">{fmt(product.price)}</div>
+        {CATEGORIES.map(cat => {
+          const catProducts = PRODUCTS.filter(p => p.category === cat.id);
+          if (catProducts.length === 0) return null;
+          return (
+            <div
+              key={cat.id}
+              ref={el => { sectionRefs.current[cat.id] = el; }}
+              data-category={cat.id}
+            >
+              <div className="section-title">{cat.name}</div>
+              {catProducts.map(product => (
+                <div key={product.id} className="product-card" onClick={() => onSelectProduct(product)}>
+                  <div className="product-emoji">{product.image}</div>
+                  <div className="product-details">
+                    <div className="product-name">{product.name}</div>
+                    <div className="product-desc">{product.description}</div>
+                    <div className="product-price">
+                      {fmt(product.price)}
+                      {product.badge && (
+                        <span className={`product-badge ${
+                          product.badge === "Nuevo" ? "badge-new" :
+                          product.badge === "Más vendido" ? "badge-best" : "badge-popular"
+                        }`} style={{ marginLeft: 8 }}>
+                          ⭐
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
-            {product.badge && (
-              <span className={`product-badge ${
-                product.badge === "Nuevo" ? "badge-new" : 
-                product.badge === "Más vendido" ? "badge-best" : "badge-popular"
-              }`}>
-                {product.badge}
-              </span>
-            )}
-          </div>
-        ))}
-        {filteredProducts.length === 0 && (
-          <div className="empty-state">
-            <div className="empty-state-emoji">🍽️</div>
-            <div className="empty-state-title">Próximamente</div>
-            <div className="empty-state-text">Estamos preparando más opciones para vos</div>
-          </div>
-        )}
+          );
+        })}
       </div>
     </>
   );
 }
 
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 // PRODUCT CONFIGURATOR (Modal)
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 function ProductConfigurator({ product, onClose, onAdd }) {
   const [selections, setSelections] = useState(() => {
     if (product.prefill) return product.prefill;
@@ -396,9 +453,9 @@ function ProductConfigurator({ product, onClose, onAdd }) {
   );
 }
 
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 // CART SCREEN
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 function CartScreen({ cart, orderNote, setOrderNote, onBack, onEdit, onRemove, onCheckout, cartTotal }) {
   if (cart.length === 0) {
     return (
@@ -479,9 +536,9 @@ function CartScreen({ cart, orderNote, setOrderNote, onBack, onEdit, onRemove, o
   );
 }
 
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 // CHECKOUT SCREEN
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 function CheckoutScreen({
   cart, cartTotal, deliveryType, setDeliveryType, paymentMethod, setPaymentMethod,
   contactName, setContactName, contactPhone, setContactPhone,
@@ -563,10 +620,10 @@ function CheckoutScreen({
         {/* Address (only for delivery) */}
         {deliveryType === "delivery" && (
           <div className="checkout-section">
-            <div className="checkout-section-title">📍 Dirección de envío</div>
+            <div className="checkout-section-title">📌 Dirección de envío</div>
             <label className="input-label input-required">Dirección</label>
             <input className={`input-field ${errors.address ? "field-error" : ""}`} value={address} onChange={e => setAddress(e.target.value)} placeholder="Ej. 29 Calle Oriente 504" />
-            <label className="input-label input-required">Nº casa/apartamento/oficina</label>
+            <label className="input-label input-required">N° casa/apartamento/oficina</label>
             <input className={`input-field ${errors.house ? "field-error" : ""}`} value={houseNum} onChange={e => setHouseNum(e.target.value)} placeholder="Ej. Casa 23, #520" />
             <label className="input-label">Ciudad</label>
             <input className="input-field" value={city} onChange={e => setCity(e.target.value)} placeholder="San Salvador" />
@@ -612,9 +669,9 @@ function CheckoutScreen({
   );
 }
 
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 // SUCCESS SCREEN
-// ═══════════════════════════════════════════
+// ═══════════════════════════════════════════════
 function SuccessScreen({ orderId, onSendWhatsApp, onNewOrder }) {
   return (
     <div className="success-page">
