@@ -263,12 +263,17 @@ function MenuScreen({ activeCategory, setActiveCategory, onSelectProduct }) {
     return () => observers.forEach(o => o.disconnect());
   }, [setActiveCategory]);
 
-  // Scroll active tab into view in the tabs bar
+  // Scroll active tab into view horizontally (without affecting page scroll)
   useEffect(() => {
     if (tabsRef.current) {
       const activeBtn = tabsRef.current.querySelector(".cat-tab.active");
       if (activeBtn) {
-        activeBtn.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+        const container = tabsRef.current;
+        const btnLeft = activeBtn.offsetLeft;
+        const btnWidth = activeBtn.offsetWidth;
+        const containerWidth = container.offsetWidth;
+        const scrollTarget = btnLeft - (containerWidth / 2) + (btnWidth / 2);
+        container.scrollTo({ left: scrollTarget, behavior: "smooth" });
       }
     }
   }, [activeCategory]);
