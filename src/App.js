@@ -4,6 +4,10 @@ import { Icons } from "./Icons";
 import { fmt, calcItemTotal, generateOrderId } from "./utils";
 import "./styles.css";
 
+// Firebase connection
+const FB = "https://freakie-dogs-default-rtdb.firebaseio.com";
+const ADMIN_URL = "https://freakie-dogs-admin.vercel.app";
+
 export default function FreakieDogsApp() {
   const [screen, setScreen] = useState("menu"); // menu | cart | checkout | success
   const [activeCategory, setActiveCategory] = useState(CATEGORIES[0]?.id || "combos");
@@ -24,6 +28,8 @@ export default function FreakieDogsApp() {
   const [reference, setReference] = useState("");
   const [promoCode, setPromoCode] = useState("");
   const [orderId, setOrderId] = useState("");
+  const [firebaseOrderId, setFirebaseOrderId] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
 
   const cartTotal = cart.reduce((sum, item) => sum + calcItemTotal(
@@ -108,13 +114,70 @@ export default function FreakieDogsApp() {
     if (orderNote.trim()) {
       msg += `\n⚠️ *Nota del pedido:* ${orderNote}\n`;
     }
+    if (firebaseOrderId) {
+      msg += `\n📲 *Rastrear tu pedido:*\n${ADMIN_URL}/track/${firebaseOrderId}\n`;
+    }
     return msg;
   }
 
-  function handleSubmitOrder() {
+  async function handleSubmitOrder() {
     if (!validateCheckout()) return;
+    setSubmitting(true);
+
     const id = generateOrderId();
     setOrderId(id);
+
+    // Build order data for Firebase
+    const orderData = {
+      orderId: id,
+      customer: {
+        name: contactName,
+        phone: contactPhone,
+      },
+      items: cart.map(item => {
+        const product = PRODUCTS.find(p => p.id === item.productId);
+        return {
+          name: product.name,
+          qty: item.qty,
+          price: product.price,
+          productId: item.productId,
+        };
+      }),
+      total: cartTotal,
+      delivery: {
+        type: deliveryType,
+        address: address,
+        houseNum: houseNum,
+        city: city,
+        reference: reference,
+        coords: coords || null,
+      },
+      payment: paymentMethod,
+      status: "new",
+      branch: null,
+      driverId: null,
+      driverName: null,
+      statusUpdates: { new: Date.now() },
+      createdAt: Date.now(),
+      note: orderNote,
+    };
+
+    try {
+      // Save to Firebase
+      const res = await fetch(`${FB}/orders.json`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(orderData),
+      });
+      const result = await res.json();
+      if (result.name) {
+        setFirebaseOrderId(result.name);
+      }
+    } catch (e) {
+      console.error("Error saving to Firebase:", e);
+    }
+
+    setSubmitting(false);
     setScreen("success");
   }
 
@@ -137,6 +200,8 @@ export default function FreakieDogsApp() {
     setReference("");
     setPromoCode("");
     setOrderId("");
+    setFirebaseOrderId("");
+    setSubmitting(false);
     setErrors({});
     setScreen("menu");
   }
@@ -193,12 +258,14 @@ export default function FreakieDogsApp() {
             errors={errors}
             onBack={() => setScreen("cart")}
             onSubmit={handleSubmitOrder}
+            submitting={submitting}
           />
         )}
 
         {screen === "success" && (
           <SuccessScreen
             orderId={orderId}
+            trackingUrl={firebaseOrderId ? `${ADMIN_URL}/track/${firebaseOrderId}` : ""}
             onSendWhatsApp={openWhatsApp}
             onNewOrder={resetOrder}
           />
@@ -559,7 +626,7 @@ function CheckoutScreen({
   contactName, setContactName, contactPhone, setContactPhone,
   address, setAddress, coords, setCoords, houseNum, setHouseNum, city, setCity,
   reference, setReference, promoCode, setPromoCode, orderNote,
-  errors, onBack, onSubmit
+  errors, onBack, onSubmit, submitting
 }) {
   const [showMap, setShowMap] = useState(false);
   const [geoLoading, setGeoLoading] = useState(false);
@@ -853,8 +920,8 @@ function CheckoutScreen({
           <span className="cart-total-label">Total a pagar</span>
           <span className="cart-total-value">{fmt(cartTotal)}</span>
         </div>
-        <button className="add-btn" onClick={onSubmit}>
-          Confirmar pedido
+        <button className="add-btn" onClick={onSubmit} disabled={submitting} style={submitting ? { opacity: 0.6 } : {}}>
+          {submitting ? "Procesando..." : "Confirmar pedido"}
         </button>
       </div>
     </>
@@ -864,7 +931,7 @@ function CheckoutScreen({
 // ═══════════════════════════════════════════════
 // SUCCESS SCREEN
 // ═══════════════════════════════════════════════
-function SuccessScreen({ orderId, onSendWhatsApp, onNewOrder }) {
+function SuccessScreen({ orderId, trackingUrl, onSendWhatsApp, onNewOrder }) {
   return (
     <div className="success-page">
       <div className="success-icon">✅</div>
@@ -878,6 +945,22 @@ function SuccessScreen({ orderId, onSendWhatsApp, onNewOrder }) {
           {Icons.whatsapp}
           Enviar por WhatsApp
         </button>
+        {trackingUrl && (
+          <a
+            href={trackingUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              display: "inline-flex", alignItems: "center", gap: 8,
+              padding: "12px 24px", background: "var(--surface, #1a1a1a)",
+              border: "1px solid var(--border, #333)", borderRadius: "var(--radius-sm, 8px)",
+              color: "var(--accent, #f97316)", textDecoration: "none",
+              fontSize: 14, fontWeight: 600,
+            }}
+          >
+            📍 Rastrear mi pedido
+          </a>
+        )}
         <button className="new-order-btn" onClick={onNewOrder}>
           Hacer otro pedido
         </button>
