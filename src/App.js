@@ -460,7 +460,9 @@ function MenuScreen({ activeCategory, setActiveCategory, onSelectProduct }) {
               <div className="section-title">{cat.name}</div>
               {catProducts.map(product => (
                 <div key={product.id} className="product-card" onClick={() => onSelectProduct(product)}>
-                  <div className="product-emoji">{product.image}</div>
+                  <div className="product-emoji">
+                    {product.imageUrl ? <img src={product.imageUrl} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} /> : product.image}
+                  </div>
                   <div className="product-details">
                     <div className="product-name">{product.name}</div>
                     <div className="product-desc">{product.description}</div>
@@ -529,7 +531,9 @@ function ProductConfigurator({ product, onClose, onAdd }) {
         </div>
 
         <div className="modal-product-hero">
-          <span className="modal-product-emoji">{product.image}</span>
+          <span className="modal-product-emoji">
+            {product.imageUrl ? <img src={product.imageUrl} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "inherit" }} /> : product.image}
+          </span>
           <div className="modal-product-name">{product.name}</div>
           <div className="modal-product-desc">{product.description}</div>
           <div className="modal-product-price">{fmt(product.price)}</div>
