@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { STORE as STORE_FALLBACK, CATEGORIES as CATEGORIES_FALLBACK, PRODUCTS as PRODUCTS_FALLBACK, MODIFIER_TEMPLATES } from "./data";
+import { STORE as STORE_FALLBACK, CATEGORIES as CATEGORIES_FALLBACK, PRODUCTS as PRODUCTS_FALLBACK } from "./data";
 import { Icons } from "./Icons";
 import { fmt, calcItemTotal, generateOrderId } from "./utils";
 import "./styles.css";
@@ -7,6 +7,9 @@ import "./styles.css";
 // Firebase connection
 const FB = "https://freakie-dogs-default-rtdb.firebaseio.com";
 const ADMIN_URL = "https://freakie-dogs-admin.vercel.app";
+
+// Fallback modifier templates (used if Firebase doesn't have them)
+const MODIFIER_TEMPLATES_FALLBACK = {};
 
 // Module-level menu data (mutated by Firebase loader, used by all components)
 let STORE = STORE_FALLBACK;
@@ -43,7 +46,7 @@ export default function FreakieDogsApp() {
           if (menu.categories) {
             CATEGORIES = Object.values(menu.categories).sort((a, b) => (a.order || 0) - (b.order || 0));
           }
-          const modTemplates = menu.modifierTemplates || MODIFIER_TEMPLATES;
+          const modTemplates = menu.modifierTemplates || MODIFIER_TEMPLATES_FALLBACK;
           PRODUCTS = Object.values(menu.products)
             .sort((a, b) => (a.order || 0) - (b.order || 0))
             .map(p => expandProductMods(p, modTemplates));
