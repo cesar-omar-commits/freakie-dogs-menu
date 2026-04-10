@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { STORE, CATEGORIES, PRODUCTS } from "./data";
+import { STORE as STORE_FALLBACK, CATEGORIES as CATEGORIES_FALLBACK, PRODUCTS as PRODUCTS_FALLBACK, MODIFIER_TEMPLATES } from "./data";
 import { Icons } from "./Icons";
 import { fmt, calcItemTotal, generateOrderId } from "./utils";
 import "./styles.css";
@@ -8,9 +8,57 @@ import "./styles.css";
 const FB = "https://freakie-dogs-default-rtdb.firebaseio.com";
 const ADMIN_URL = "https://freakie-dogs-admin.vercel.app";
 
+// Module-level menu data (mutated by Firebase loader, used by all components)
+let STORE = STORE_FALLBACK;
+let CATEGORIES = CATEGORIES_FALLBACK;
+let PRODUCTS = PRODUCTS_FALLBACK;
+
+// Helper to rebuild a product's modifierGroups from Firebase format (with template references)
+function expandProductMods(product, modTemplates) {
+  if (!product.modifierGroups || product.modifierGroups.length === 0) return { ...product, modifierGroups: [] };
+  return {
+    ...product,
+    modifierGroups: product.modifierGroups.map(mg => {
+      if (mg.template && modTemplates[mg.template]) {
+        return { ...modTemplates[mg.template], name: mg.name || modTemplates[mg.template].name, id: mg.id };
+      }
+      return mg;
+    }),
+  };
+}
+
 export default function FreakieDogsApp() {
+  // Force re-render when menu loads from Firebase
+  const [menuVersion, setMenuVersion] = useState(0);
+  const [menuLoading, setMenuLoading] = useState(true);
+
+  // Load menu from Firebase
+  useEffect(() => {
+    async function loadMenu() {
+      try {
+        const res = await fetch(`${FB}/menu.json`);
+        const menu = await res.json();
+        if (menu && menu.products) {
+          if (menu.store) STORE = menu.store;
+          if (menu.categories) {
+            CATEGORIES = Object.values(menu.categories).sort((a, b) => (a.order || 0) - (b.order || 0));
+          }
+          const modTemplates = menu.modifierTemplates || MODIFIER_TEMPLATES;
+          PRODUCTS = Object.values(menu.products)
+            .sort((a, b) => (a.order || 0) - (b.order || 0))
+            .map(p => expandProductMods(p, modTemplates));
+          setMenuVersion(v => v + 1);
+        }
+      } catch (e) {
+        console.error("Error loading menu from Firebase, using fallback:", e);
+      }
+      setMenuLoading(false);
+    }
+    loadMenu();
+  }, []);
+
   const [screen, setScreen] = useState("menu"); // menu | cart | checkout | success
-  const [activeCategory, setActiveCategory] = useState(CATEGORIES[0]?.id || "combos");
+  const [activeCategory, setActiveCategory] = useState(CATEGORIES_FALLBACK[0]?.id || "combos");
   const [selectedProduct, setSelectedProduct] = useState(null);
   const [cart, setCart] = useState([]);
   const [orderNote, setOrderNote] = useState("");
@@ -206,8 +254,17 @@ export default function FreakieDogsApp() {
     setScreen("menu");
   }
 
+  if (menuLoading) {
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0a", color: "#fff", flexDirection: "column", fontFamily: "system-ui" }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🌭</div>
+        <p style={{ color: "#888" }}>Cargando menú...</p>
+      </div>
+    );
+  }
+
   return (
-    <>
+    <div key={menuVersion}>
       <div className="app">
         {screen === "menu" && (
           <MenuScreen
@@ -288,7 +345,7 @@ export default function FreakieDogsApp() {
           </button>
         )}
       </div>
-    </>
+    </div>
   );
 }
 
