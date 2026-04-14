@@ -8,6 +8,11 @@ import "./styles.css";
 const FB = "https://freakie-dogs-default-rtdb.firebaseio.com";
 const ADMIN_URL = "https://freakie-dogs-admin.vercel.app";
 
+// Supabase (ERP Freakie Dogs)
+const SUPABASE_URL = "https://btboxlwfqcbrdfrlnwln.supabase.co";
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImJ0Ym94bHdmcWNicmRmcmxud2xuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM5NjcyMzQsImV4cCI6MjA4OTU0MzIzNH0.NpBQZgxbajgOVvw3FOwIUiOkgmh7rEuPQMRi0ZcFKe4";
+const DEFAULT_SUCURSAL_ID = "584aee3c-a842-496f-9f2b-1e3bac6e6b23"; // Casa Matriz — ERP reasigna después
+
 // Fallback modifier templates (used if Firebase doesn't have them)
 const MODIFIER_TEMPLATES_FALLBACK = {};
 
@@ -214,7 +219,7 @@ export default function FreakieDogsApp() {
     };
 
     try {
-      // Save to Firebase
+      // Save to Firebase (keeps /track/ID page working)
       const res = await fetch(`${FB}/orders.json`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -226,6 +231,66 @@ export default function FreakieDogsApp() {
       }
     } catch (e) {
       console.error("Error saving to Firebase:", e);
+    }
+
+    // Also save to Supabase (ERP Freakie Dogs)
+    try {
+      const supabaseOrder = {
+        numero_orden: id,
+        sucursal_id: DEFAULT_SUCURSAL_ID,
+        cliente_nombre: contactName,
+        cliente_telefono: contactPhone,
+        cliente_direccion: deliveryType === "delivery"
+          ? `${address}${houseNum ? ", " + houseNum : ""}${city ? ", " + city : ""}${reference ? " (" + reference + ")" : ""}`
+          : "Recogida en el comercio",
+        cliente_lat: coords?.lat || null,
+        cliente_lng: coords?.lng || null,
+        items: cart.map(item => {
+          const product = PRODUCTS.find(p => p.id === item.productId);
+          const selections = {};
+          if (item.selections) {
+            Object.entries(item.selections).forEach(([groupId, opts]) => {
+              const group = product?.modifierGroups?.find(g => g.id === groupId);
+              if (group && opts.length > 0) {
+                selections[group.name] = opts.map(o => ({ name: o.name, price: o.price }));
+              }
+            });
+          }
+          return {
+            product_id: item.productId,
+            name: product?.name || "",
+            qty: item.qty,
+            price: product?.price || 0,
+            line_total: calcItemTotal(product, item.selections, item.qty),
+            selections,
+          };
+        }),
+        metodo_pago: paymentMethod === "cash" ? "efectivo" : paymentMethod === "transfer" ? "transferencia" : "tarjeta",
+        subtotal: cartTotal,
+        costo_envio: 0,
+        total: cartTotal,
+        estado: "recibida",
+        notas_cliente: orderNote || null,
+      };
+
+      const supaRes = await fetch(`${SUPABASE_URL}/rest/v1/delivery_clientes`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_ANON_KEY,
+          "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
+          "Prefer": "return=minimal",
+        },
+        body: JSON.stringify(supabaseOrder),
+      });
+      if (!supaRes.ok) {
+        const errText = await supaRes.text();
+        console.error("Supabase insert failed:", supaRes.status, errText);
+      } else {
+        console.log("Pedido enviado al ERP correctamente");
+      }
+    } catch (e) {
+      console.error("Error saving to Supabase ERP:", e);
     }
 
     setSubmitting(false);
