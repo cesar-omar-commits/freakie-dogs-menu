@@ -326,7 +326,7 @@ export default function FreakieDogsApp() {
     return (
       <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#0a0a0a", color: "#fff", flexDirection: "column", fontFamily: "system-ui" }}>
         <div style={{ fontSize: 48, marginBottom: 12 }}>🌭</div>
-        <p style={{ color: "#888" }}>Cargando menú...</p>
+        <p style={{ color: "#9A9A9A" }}>Cargando menú...</p>
       </div>
     );
   }
@@ -592,7 +592,7 @@ function ProductConfigurator({ product, onClose, onAdd }) {
       <div className="product-modal" onClick={e => e.stopPropagation()}>
         <div className="modal-header">
           <button className="modal-back" onClick={onClose}>{Icons.back}</button>
-          <div className="modal-title">Personalizar</div>
+          <div className="modal-title">Armalo a tu manera</div>
         </div>
 
         <div className="modal-product-hero">
@@ -900,14 +900,14 @@ function CheckoutScreen({
             <div className={`radio-option ${deliveryType === "delivery" ? "selected" : ""}`} onClick={() => setDeliveryType("delivery")}>
               <div className="radio-dot"><div className="radio-dot-inner" /></div>
               <div>
-                <div className="radio-label">Envío a domicilio</div>
+                <div className="radio-label">🛵 Envío a domicilio</div>
                 <div className="radio-sublabel">Te lo llevamos a tu puerta</div>
               </div>
             </div>
             <div className={`radio-option ${deliveryType === "pickup" ? "selected" : ""}`} onClick={() => setDeliveryType("pickup")}>
               <div className="radio-dot"><div className="radio-dot-inner" /></div>
               <div>
-                <div className="radio-label">Recogida en el comercio</div>
+                <div className="radio-label">🏪 Recogida en comercio</div>
                 <div className="radio-sublabel">Pasás a recogerlo a la sucursal</div>
               </div>
             </div>
@@ -1030,8 +1030,8 @@ function CheckoutScreen({
             <input className="input-field" style={{ width: 80, textAlign: "center" }} value="+503" readOnly />
             <input className={`input-field ${errors.phone ? "field-error" : ""}`} style={{ flex: 1 }} value={contactPhone} onChange={e => setContactPhone(e.target.value)} placeholder="6012 3456" type="tel" />
           </div>
-          <label className="input-label">Código promocional</label>
-          <input className="input-field" value={promoCode} onChange={e => setPromoCode(e.target.value)} placeholder="Ej. FREAKIE50OFF" />
+          <label className="input-label">Código secreto</label>
+          <input className="input-field" value={promoCode} onChange={e => setPromoCode(e.target.value)} placeholder="¿Tenés un código secreto? 🤫" />
         </div>
 
         {orderNote && (
@@ -1063,30 +1063,19 @@ function CheckoutScreen({
 function SuccessScreen({ orderId, trackingUrl, onSendWhatsApp, onNewOrder }) {
   return (
     <div className="success-page">
-      <div className="success-icon">✅</div>
+      <div className="success-icon">🌶️</div>
       <div className="success-title">¡Pedido listo!</div>
       <div className="success-order-id">{orderId}</div>
       <div className="success-text">
-        Tu pedido ha sido registrado. Enviá el detalle por WhatsApp para que el equipo lo reciba y empiece a prepararlo.
+        ¡Ya va en camino lo tuyo! El equipo Freakie está en eso 🌭
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 12, alignItems: "center" }}>
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%" }}>
         <button className="wa-send-btn" onClick={onSendWhatsApp}>
           {Icons.whatsapp}
           Enviar por WhatsApp
         </button>
         {trackingUrl && (
-          <a
-            href={trackingUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{
-              display: "inline-flex", alignItems: "center", gap: 8,
-              padding: "12px 24px", background: "var(--surface, #1a1a1a)",
-              border: "1px solid var(--border, #333)", borderRadius: "var(--radius-sm, 8px)",
-              color: "var(--accent, #f97316)", textDecoration: "none",
-              fontSize: 14, fontWeight: 600,
-            }}
-          >
+          <a href={trackingUrl} target="_blank" rel="noopener noreferrer" className="track-btn" style={{ textDecoration: "none" }}>
             📍 Rastrear mi pedido
           </a>
         )}
